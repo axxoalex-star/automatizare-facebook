@@ -3,7 +3,7 @@ name: Facebook to WordPress Automator
 on:
   schedule:
       - cron: '0 6 * * *'
-        workflow_dispatch:
+        workflow_dispatch: 
 
         jobs:
           run-scraper:
@@ -30,4 +30,3 @@ on:
                                                                                                                               WP_ENDPOINT: ${{ secrets.WP_ENDPOINT }}
                                                                                                                                         API_KEY: ${{ secrets.API_KEY }}
                                                                                                                                                 run: node scraper.js
-                                                                                                                                                
