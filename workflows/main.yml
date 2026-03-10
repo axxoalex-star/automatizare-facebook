@@ -21,7 +21,7 @@ jobs:
           cache: 'npm'
 
       - name: Instaleaza dependintele NPM si Axios
-        run: npm ci
+        run: npm install
 
       - name: Instaleaza Chromium (browser-ul necesar pt Playwright)
         run: npx playwright install --with-deps chromium
