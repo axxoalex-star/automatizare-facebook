@@ -10,76 +10,85 @@ const API_KEY = process.env.API_KEY || 'CHEIA_MEA_SECRETA_SUPER_PUTERNICA_123';
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        viewport: { width: 1920, height: 1080 }
     });
     const page = await context.newPage();
 
     try {
         console.log(`Accesăm pagina: ${FB_PAGE_URL}`);
-        await page.goto(FB_PAGE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.waitForTimeout(7000); 
+        await page.goto(FB_PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
+        await page.waitForTimeout(10000); // Așteptăm să se încarce tot feed-ul
 
-        // Eliminăm orice fereastră de Login sau Cookies care acoperă ecranul
+        // Curățăm ferestrele de login/cookies care blochează ecranul
         await page.evaluate(() => {
-            const selectors = ['div[role="dialog"]', 'div[id^="login_mount"]', 'div.x9f619.x78zum5.xdt5ytf.xl56j7k'];
-            selectors.forEach(s => {
-                document.querySelectorAll(s).forEach(el => el.remove());
-            });
-            document.body.style.overflow = 'auto'; // Deblocăm scroll-ul
+            const badOnes = document.querySelectorAll('div[role="dialog"], div[id^="login_mount"], [aria-label="Închide"], [aria-label="Close"]');
+            badOnes.forEach(el => el.remove());
+            document.body.style.overflow = 'auto';
         });
 
-        console.log("Căutăm prima postare...");
+        console.log("Căutăm și extindem prima postare...");
+        
+        // Identificăm prima postare
         const firstPost = page.locator('div[role="article"]').first();
-        await firstPost.waitFor({ timeout: 15000 });
+        
+        // Căutăm butonul "See more" sau "Vezi mai mult" în interiorul postării
+        await page.evaluate(() => {
+            const article = document.querySelector('div[role="article"]');
+            if (article) {
+                // Căutăm toate elementele care pot fi butoane de expandare
+                const buttons = Array.from(article.querySelectorAll('div[role="button"], span[role="button"], div[dir="auto"]'));
+                const seeMore = buttons.find(b => b.innerText.includes('See more') || b.innerText.includes('Vezi mai mult'));
+                if (seeMore) {
+                    seeMore.click();
+                    console.log("Click pe expandare efectuat.");
+                }
+            }
+        });
 
-        // Căutăm butonul "Vezi mai mult" și îi dăm click forțat prin cod (nu cursor)
-        const seeMore = firstPost.locator('text="Vezi mai mult"').or(firstPost.locator('text="See more"')).first();
-        if (await seeMore.isVisible()) {
-            console.log("Am găsit butonul de expansiune. Extindem textul...");
-            await seeMore.click({ force: true }).catch(() => {});
-            await page.waitForTimeout(2000);
-        }
+        await page.waitForTimeout(3000); // Așteptăm să se extindă textul
 
-        // Extragem textul complet folosind selectorul de mesaj
-        let text = await firstPost.locator('div[data-ad-comet-preview="message"]').innerText().catch(() => null);
-        if (!text) text = await firstPost.locator('div[dir="auto"]').first().innerText().catch(() => null);
+        // Extragem textul final
+        let text = await page.evaluate(() => {
+            const article = document.querySelector('div[role="article"]');
+            if (!article) return null;
+            
+            // Încercăm selectorul specific de mesaj
+            const msgContainer = article.querySelector('div[data-ad-comet-preview="message"]');
+            if (msgContainer) {
+                let fullText = msgContainer.innerText;
+                // Ștergem manual "See more" sau "Vezi mai mult" dacă a rămas în text
+                fullText = fullText.replace(/... See more/g, '').replace(/... Vezi mai mult/g, '').replace(/See more/g, '').replace(/Vezi mai mult/g, '');
+                return fullText.trim();
+            }
+            return article.innerText; // Fallback
+        });
 
-        if (!text) {
-            console.log("Eroare: Nu am putut extrage textul.");
+        if (!text || text.length < 10) {
+            console.log("Nu am găsit text valid.");
             return;
         }
 
-        // Extragem imaginea
-        const image = await firstPost.locator('img').first();
-        const imageUrl = image ? await image.getAttribute('src') : '';
+        // Extragem imaginea de rezoluție mare
+        const imageUrl = await firstPost.locator('img').first().getAttribute('src').catch(() => '');
 
-        const title = text.split(/\s+/).slice(0, 8).join(' ') + '...';
-        console.log(`Gata! Titlu extras: ${title}`);
+        const title = text.split(/\s+/).slice(0, 10).join(' ') + '...';
+        console.log(`Date pregătite! Titlu: ${title}`);
 
-        // TRIMITEM CĂTRE WORDPRESS CU RETRY (Re-încercare în caz de timeout)
-        let success = false;
-        let attempts = 0;
-        while (!success && attempts < 3) {
-            try {
-                attempts++;
-                console.log(`Trimitere către WordPress (Încercarea ${attempts})...`);
-                const response = await axios.post(WP_ENDPOINT, {
-                    title: title,
-                    content: text,
-                    image_url: imageUrl
-                }, {
-                    headers: { 'X-API-KEY': API_KEY },
-                    timeout: 60000 // Așteptăm un minut
-                });
-                console.log('Succes WordPress:', response.data);
-                success = true;
-            } catch (err) {
-                console.error(`Eșec la trimitere: ${err.message}`);
-                if (attempts < 3) await new Promise(r => setTimeout(r, 5000)); // Așteptăm 5 secunde înainte de re-încercare
-            }
-        }
+        // Trimitere către WordPress cu sistem de siguranță
+        console.log("Trimitere către WordPress...");
+        const response = await axios.post(WP_ENDPOINT, {
+            title: title,
+            content: text,
+            image_url: imageUrl
+        }, {
+            headers: { 'X-API-KEY': API_KEY },
+            timeout: 60000 
+        });
+
+        console.log('Succes! Postarea a fost actualizată pe site.', response.data);
 
     } catch (error) {
-        console.error('Eroare Generală:', error.message);
+        console.error('Eroare:', error.message);
         process.exit(1);
     } finally {
         await browser.close();
