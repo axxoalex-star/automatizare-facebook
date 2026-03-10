@@ -2,9 +2,8 @@ name: Facebook to WordPress Automator
 
 on:
   schedule:
-    # Ruleaza in fiecare zi la 06:00 UTC (08:00 sau 09:00 ora in Romania depinde de ora vara/iarna)
     - cron: '0 6 * * *'
-  workflow_dispatch: # Permite rularea manuala de pe GitHub apasand pe "Run workflow"
+  workflow_dispatch: 
 
 jobs:
   run-scraper:
@@ -18,7 +17,6 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          cache: 'npm'
 
       - name: Instaleaza dependintele NPM si Axios
         run: npm install
@@ -28,7 +26,6 @@ jobs:
 
       - name: Ruleaza scraper-ul automatizat
         env:
-          # Aici datele sunt retrase din GitHub Secrets pentru securitate (sa nu le ai vizibile in main.yml)
           FB_PAGE_URL: ${{ secrets.FB_PAGE_URL }}
           WP_ENDPOINT: ${{ secrets.WP_ENDPOINT }}
           API_KEY: ${{ secrets.API_KEY }}
