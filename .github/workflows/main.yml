@@ -1,0 +1,35 @@
+name: Facebook to WordPress Automator
+
+on:
+  schedule:
+    # Ruleaza in fiecare zi la 06:00 UTC (08:00 sau 09:00 ora in Romania depinde de ora vara/iarna)
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Permite rularea manuala de pe GitHub apasand pe "Run workflow"
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Preia sursele din Git
+        uses: actions/checkout@v3
+
+      - name: Seteaza Node.js 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Instaleaza dependintele NPM si Axios
+        run: npm ci
+
+      - name: Instaleaza Chromium (browser-ul necesar pt Playwright)
+        run: npx playwright install --with-deps chromium
+
+      - name: Ruleaza scraper-ul automatizat
+        env:
+          # Aici datele sunt retrase din GitHub Secrets pentru securitate (sa nu le ai vizibile in main.yml)
+          FB_PAGE_URL: ${{ secrets.FB_PAGE_URL }}
+          WP_ENDPOINT: ${{ secrets.WP_ENDPOINT }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: node scraper.js
