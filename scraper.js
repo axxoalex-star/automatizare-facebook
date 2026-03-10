@@ -8,11 +8,11 @@ const API_KEY = 'CHEIA_MEA_SECRETA_SUPER_PUTERNICA_123';
 const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/fb-sync/v1/post?api_key=${API_KEY}`;
 
 (async () => {
-    console.log(`Pornesc scriptul v2.4 (Ultra-Stable Screenshot Method)...`);
+    console.log(`Pornesc scriptul v2.5 (High-Speed Screenshot Sync)...`);
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 1200 } // Viewport înalt pentru a prinde postarea
+        viewport: { width: 1000, height: 1000 } // Viewport mai mic pentru screenshot mai mic
     });
     const page = await context.newPage();
 
@@ -20,13 +20,10 @@ const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/fb-sync/v1/post?api
         console.log(`Navigăm la Facebook...`);
         await page.goto(FB_PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
         
-        // Închidem orice popup de login
         await page.evaluate(() => {
             const closeBtn = document.querySelector('div[aria-label="Închide"], div[aria-label="Close"], [id^="login_mount"] div[role="button"]');
             if (closeBtn) closeBtn.click();
-            // Eliminăm overlay-urile care blochează scroll-ul
             document.querySelectorAll('div[id^="login_mount"]').forEach(el => el.remove());
-            document.body.style.overflow = 'auto';
         });
 
         await page.waitForTimeout(5000);
@@ -34,52 +31,41 @@ const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/fb-sync/v1/post?api
         const firstPost = page.locator('div[role="article"]').first();
         await firstPost.scrollIntoViewIfNeeded();
 
-        // --- EXPANDARE TEXT ---
-        console.log("Expandăm textul...");
+        // Expansiune
         await page.evaluate(() => {
-            const article = document.querySelector('div[role="article"]');
-            if (!article) return;
-            const buttons = Array.from(article.querySelectorAll('div[role="button"], span[role="button"]'));
-            const seeMore = buttons.find(b => b.innerText.includes('Vezi mai mult') || b.innerText.includes('See more'));
-            if (seeMore) seeMore.click();
+            const btn = Array.from(document.querySelectorAll('div[role="button"], span')).find(b => b.innerText.includes('Vezi mai mult') || b.innerText.includes('See more'));
+            if (btn) btn.click();
         });
         await page.waitForTimeout(3000);
 
-        // --- EXTRAGERE DATE ȘI SCREENSHOT ---
-        console.log("Capturăm imaginea postării (Screenshot)...");
-        const screenshotPath = 'post_image.jpg';
-        // Facem screenshot doar la containerul postării (perfect pentru video!)
-        await firstPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 90 });
+        // Screenshot mic și rapid
+        console.log("Capturăm screenshot-ul...");
+        const screenshotPath = 'post.jpg';
+        await firstPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 60 }); // Calitate redusă pt viteză
 
-        const postData = await page.evaluate(() => {
-            const article = document.querySelector('div[role="article"]');
-            const msgBox = article ? article.querySelector('div[data-ad-comet-preview="message"]') : null;
-            let text = msgBox ? msgBox.innerText : (article ? article.innerText.slice(0, 500) : "");
-            return {
-                text: text.replace(/See more|Vezi mai mult/gi, '').trim()
-            };
+        const text = await page.evaluate(() => {
+            const msg = document.querySelector('div[data-ad-comet-preview="message"]');
+            return msg ? msg.innerText.replace(/See more|Vezi mai mult/g, '').trim() : "Postare Facebook";
         });
 
-        const title = postData.text.split('\n')[0].slice(0, 90) + '...';
+        const title = text.slice(0, 80) + '...';
 
-        // --- TRIMITERE WP (Multipart pentru imagine) ---
-        console.log("Trimitere date + imagine către WordPress...");
-        
+        // Trimitere cu timeout mărit la 5 minute
+        console.log("Trimitere către WordPress (Timeout 5 min)...");
         const form = new FormData();
         form.append('title', title);
-        form.append('content', postData.text);
+        form.append('content', text);
         form.append('image', fs.createReadStream(screenshotPath));
 
         const response = await axios.post(WP_ENDPOINT, form, {
             headers: { ...form.getHeaders() },
-            timeout: 60000 
+            timeout: 300000 // 5 minute
         });
 
-        console.log('Succes Total! WordPress a răspuns:', response.data);
+        console.log('Succes!', response.data);
 
     } catch (error) {
         console.error('Eroare:', error.message);
-        if (error.response) console.error('Răspuns server:', error.response.data);
         process.exit(1);
     } finally {
         await browser.close();
