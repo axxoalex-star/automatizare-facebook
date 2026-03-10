@@ -2,18 +2,15 @@ const { chromium } = require('playwright');
 const axios = require('axios');
 
 const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciandanielstanciuviziteu'; 
-const WP_ENDPOINT = process.env.WP_ENDPOINT || 'https://siteul.tau.ro/wp-json/fb-sync/v1/post'; 
+const WP_ENDPOINT = process.env.WP_ENDPOINT || 'https://lucianstanciuviziteu.ro/wp-json/fb-sync/v1/post'; 
 const API_KEY = process.env.API_KEY || 'CHEIA_MEA_SECRETA_SUPER_PUTERNICA_123';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 (async () => {
-    console.log(`Pornesc scriptul de scraping cu User-Agent: ${UA}`);
+    console.log(`Pornesc scriptul de scraping v1.4...`);
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({
-        userAgent: UA,
-        viewport: { width: 1920, height: 1080 }
-    });
+    const context = await browser.newContext({ userAgent: UA, viewport: { width: 1920, height: 1080 } });
     const page = await context.newPage();
 
     try {
@@ -21,97 +18,88 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
         await page.goto(FB_PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForTimeout(10000); 
 
-        // Gestionare Popups: Curătăm orice banner care poate bloca vizibilitatea
+        // Curățăm elementele de login
         await page.evaluate(() => {
-            const badElements = [
-                'div[role="dialog"]', 
-                'div[id^="login_mount"]', 
-                '[aria-label="Închide"]', 
-                '[aria-label="Close"]', 
-                '#facebook:not(.can_go_back) .fb_iframe_widget'
-            ];
-            badElements.forEach(s => {
-                document.querySelectorAll(s).forEach(el => el.remove());
-            });
-            document.body.style.overflow = 'auto'; // Re-activăm scroll-ul dacă e blocat
+            document.querySelectorAll('div[role="dialog"], div[id^="login_mount"], [aria-label="Închide"]').forEach(el => el.remove());
+            document.body.style.overflow = 'auto';
         });
 
-        console.log("Căutăm prima postare și extindem textul...");
+        console.log("Căutăm prima postare...");
         const firstPost = page.locator('div[role="article"]').first();
-        
-        // Expandare text "See more"
+        await firstPost.scrollIntoViewIfNeeded();
+
+        // --- EXPANDARE TEXT ---
+        console.log("Încercăm expandarea textului...");
         await page.evaluate(() => {
             const article = document.querySelector('div[role="article"]');
             if (article) {
                 const buttons = Array.from(article.querySelectorAll('div[role="button"], span[role="button"], div[dir="auto"]'));
-                const seeMore = buttons.find(b => b.innerText.includes('See more') || b.innerText.includes('Vezi mai mult'));
-                if (seeMore) seeMore.click();
+                const seeMore = buttons.find(b => b.innerText === 'See more' || b.innerText === 'Vezi mai mult' || b.innerText.includes('... See more'));
+                if (seeMore) {
+                    seeMore.scrollIntoView();
+                    seeMore.click();
+                }
             }
         });
-        await page.waitForTimeout(4000);
 
-        // Extragem textul curat
-        let text = await page.evaluate(() => {
+        // Așteptăm ca textul să se schimbe (să se lungească)
+        await page.waitForTimeout(5000);
+
+        // --- EXTRAGERE TEXT COMPLET ---
+        let fullText = await page.evaluate(() => {
             const article = document.querySelector('div[role="article"]');
             if (!article) return null;
+            
+            // Căutăm containerul de mesaj
             const msg = article.querySelector('div[data-ad-comet-preview="message"]');
             if (msg) {
-                return msg.innerText.replace(/... See more/g, '').replace(/... Vezi mai mult/g, '').trim();
+                return msg.innerText.replace(/\.\.\. See more/g, '').replace(/\.\.\. Vezi mai mult/g, '').trim();
             }
-            return null;
+            
+            // Plan B: Toate div-urile cu text din articol care nu sunt headere
+            const textNodes = Array.from(article.querySelectorAll('div[dir="auto"]'));
+            return textNodes.map(n => n.innerText).join('\n').trim();
         });
 
-        if (!text) text = await firstPost.locator('div[dir="auto"]').first().innerText().catch(() => "Postare fara text");
-
-        // Selectori Imagine Inteligenți: Căutăm poze scontent pe Facebook
-        console.log("Căutăm imaginea principală (scontent)...");
-        const allImages = await firstPost.locator('img').all();
-        let imageUrl = '';
-        for (const img of allImages) {
-            const src = await img.getAttribute('src');
-            if (src && src.includes('scontent') && !src.includes('emoji.php')) {
-                imageUrl = src;
-                break;
-            }
-        }
-        if (!imageUrl && allImages.length > 0) {
-            imageUrl = await allImages[0].getAttribute('src');
+        if (!fullText || fullText.length < 5) {
+            console.log("Eroare: Nu am putut lua textul.");
+            return;
         }
 
-        const title = text.split(/\s+/).slice(0, 10).join(' ') + '...';
-        console.log(`Date pregătite. Trimitere către WordPress: ${WP_ENDPOINT}`);
-
-        // Trimitere către WordPress cu Logging Detaliat și Anti-Blocking headers
-        try {
-            const response = await axios.post(WP_ENDPOINT, {
-                title: title,
-                content: text,
-                image_url: imageUrl
-            }, {
-                headers: { 
-                    'X-API-KEY': API_KEY,
-                    'User-Agent': UA,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 300000 // 5 Minute
+        // --- EXTRAGERE IMAGINE ---
+        console.log("Căutăm imaginea postării...");
+        const imageUrl = await page.evaluate(() => {
+            const article = document.querySelector('div[role="article"]');
+            if (!article) return '';
+            
+            // Căutăm toate imaginile și o luăm pe cea care pare a fi conținutul (cea mai mare sau scontent)
+            const imgs = Array.from(article.querySelectorAll('img'));
+            const contentImg = imgs.find(img => {
+                const src = img.src || '';
+                const width = img.width || 0;
+                return src.includes('scontent') && width > 200 && !src.includes('emoji.php');
             });
-            console.log('RĂSPUNS SERVER WP:', response.status, response.data);
-        } catch (axiosError) {
-            console.error('--- EROARE AXIOS DETALIATĂ ---');
-            if (axiosError.response) {
-                console.error(`Status: ${axiosError.response.status}`);
-                console.error(`Mesaj: ${JSON.stringify(axiosError.response.data)}`);
-            } else if (axiosError.code === 'ETIMEDOUT' || axiosError.code === 'ECONNABORTED') {
-                console.error('TIMED OUT: Serverul nu a răspuns în 5 minute. Verificați Firewall-ul (Wordfence/Cloudflare).');
-            } else {
-                console.error(`Cod Eroare: ${axiosError.code}`);
-                console.error(`Mesaj: ${axiosError.message}`);
-            }
-            process.exit(1);
-        }
+            
+            return contentImg ? contentImg.src : (imgs[1] ? imgs[1].src : ''); // Prima e de obicei profilul, a doua e postarea
+        });
+
+        const title = fullText.split(/\s+/).slice(0, 10).join(' ') + '...';
+        console.log(`Date Pregătite: Text lungime ${fullText.length}, Imagine gasita: ${imageUrl ? 'DA' : 'NU'}`);
+
+        // --- TRIMITERE WP ---
+        const response = await axios.post(WP_ENDPOINT, {
+            title: title,
+            content: fullText,
+            image_url: imageUrl
+        }, {
+            headers: { 'X-API-KEY': API_KEY, 'Content-Type': 'application/json' },
+            timeout: 60000
+        });
+
+        console.log('Finalizat:', response.data);
 
     } catch (error) {
-        console.error('EROARE SCRAPING:', error.message);
+        console.error('Eroare:', error.message);
         process.exit(1);
     } finally {
         await browser.close();
