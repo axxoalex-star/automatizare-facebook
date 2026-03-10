@@ -3,53 +3,69 @@ const axios = require('axios');
 
 const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciandanielstanciuviziteu'; 
 const API_KEY = 'CHEIA_MEA_SECRETA_SUPER_PUTERNICA_123';
-// Adaugam cheia direct in URL pentru a pacali Firewall-ul
 const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/fb-sync/v1/post?api_key=${API_KEY}`;
 
 (async () => {
-    console.log(`Pornesc scriptul v2.1 (Anti-Firewall Sync)...`);
+    console.log(`Pornesc scriptul v2.2 (Data Extraction Fix)...`);
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' });
+    const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    });
     const page = await context.newPage();
 
     try {
-        // --- PASUL 1: TEST DE CONEXIUNE ---
-        console.log("Testez dacă ușa serverului este deschisă...");
-        try {
-            const test = await axios.get(WP_ENDPOINT, { timeout: 10000 });
-            console.log("Serverul a raspuns: ", test.data.message);
-        } catch (e) {
-            console.log("ATENȚIE: Serverul nu a răspuns la testul rapid. Probabil IP-ul GitHub este blocat.");
-        }
-
-        // --- PASUL 2: SCRAPING FACEBOOK ---
-        await page.goto(FB_PAGE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        console.log(`Accesăm Facebook: ${FB_PAGE_URL}`);
+        await page.goto(FB_PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
         await page.waitForTimeout(10000); 
 
-        const text = await page.evaluate(() => {
-            const msg = document.querySelector('div[data-ad-comet-preview="message"]');
-            return msg ? msg.innerText.split('See more')[0].trim() : "Postare Facebook";
+        // --- EXTRAGERE TEXT COMPLETĂ ---
+        const data = await page.evaluate(() => {
+            const article = document.querySelector('div[role="article"]');
+            if (!article) return null;
+
+            // Apăsăm toate butoanele de expandare text
+            const buttons = Array.from(article.querySelectorAll('div, span, a')).filter(el => 
+                el.innerText === 'See more' || el.innerText === 'Vezi mai mult' || el.innerText.includes('... See more')
+            );
+            buttons.forEach(b => b.click());
+
+            // Căutăm imaginea mare de postare
+            const imgs = Array.from(article.querySelectorAll('img'));
+            // Filtrăm imaginile: să fie scontent, să nu fie profil (mici), să nu fie emoji
+            const mainImg = imgs.find(img => {
+                const src = img.src || '';
+                const rect = img.getBoundingClientRect();
+                return src.includes('scontent') && rect.width > 300 && !src.includes('emoji.php');
+            });
+
+            // Căutăm containerul de mesaj
+            const msg = article.querySelector('div[data-ad-comet-preview="message"]');
+            
+            return {
+                text: msg ? msg.innerText.replace(/See more|Vezi mai mult/g, '').trim() : article.innerText.slice(0, 500),
+                imageUrl: mainImg ? mainImg.src : ""
+            };
         });
 
-        const imageUrl = await page.evaluate(() => {
-            const imgs = Array.from(document.querySelectorAll('img')).filter(i => i.src.includes('scontent'));
-            return imgs.find(i => i.width > 250)?.src || "";
-        });
+        if (!data || !data.text) {
+            console.log("Nu am putut extrage datele.");
+            return;
+        }
 
-        const title = text.slice(0, 50) + '...';
+        const title = data.text.split(/\s+/).slice(0, 10).join(' ') + '...';
+        console.log(`Date Extrase: Titlu: ${title}, Imagine: ${data.imageUrl ? 'GASITA' : 'LIPSA'}`);
 
-        // --- PASUL 3: TRIMITERE DATE ---
-        console.log("Trimit datele finale către WordPress...");
+        // --- TRIMITERE CĂTRE WP ---
         const response = await axios.post(WP_ENDPOINT, {
             title: title,
-            content: text,
-            image_url: imageUrl
-        }, { timeout: 30000 });
+            content: data.text,
+            image_url: data.imageUrl
+        }, { timeout: 40000 });
 
-        console.log('Succes Total!', response.data);
+        console.log('Succes:', response.data);
 
     } catch (error) {
-        console.error('Eroare Finală:', error.message);
+        console.error('Eroare:', error.message);
         process.exit(1);
     } finally {
         await browser.close();
