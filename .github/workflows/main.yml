@@ -1,33 +1,33 @@
 name: Facebook to WordPress Automator
 
 on:
-  schedule:
-      - cron: '0 6 * * *'
-        workflow_dispatch: 
+schedule:
+- cron: '0 6 * * *'
+workflow_dispatch: 
 
-        jobs:
-          run-scraper:
-              runs-on: ubuntu-latest
+jobs:
+run-scraper:
+runs-on: ubuntu-latest
 
-                  steps:
-                        - name: Preia sursele din Git
-                                uses: actions/checkout@v3
+steps:
+    - name: Preia sursele din Git
+            uses: actions/checkout@v3
 
-                                      - name: Seteaza Node.js 18
-                                              uses: actions/setup-node@v3
-                                                      with:
-                                                                node-version: '18'
+                  - name: Seteaza Node.js 18
+                          uses: actions/setup-node@v3
+                                  with:
+                                            node-version: '18'
 
-                                                                      - name: Instaleaza dependintele NPM si Axios
-                                                                              run: npm install
+                                                  - name: Instaleaza dependintele NPM si Axios
+                                                          run: npm install
 
-                                                                                    - name: Instaleaza Chromium (browser-ul necesar pt Playwright)
-                                                                                            run: npx playwright install --with-deps chromium
+                                                                - name: Instaleaza Chromium (browser-ul necesar pt Playwright)
+                                                                        run: npx playwright install --with-deps chromium
 
-                                                                                                  - name: Ruleaza scraper-ul automatizat
-                                                                                                          env:
-                                                                                                                    FB_PAGE_URL: ${{ secrets.FB_PAGE_URL }}
-                                                                                                                              WP_ENDPOINT: ${{ secrets.WP_ENDPOINT }}
-                                                                                                                                        API_KEY: ${{ secrets.API_KEY }}
-                                                                                                                                                run: node scraper.js
-                                                                                                                                                
+                                                                              - name: Ruleaza scraper-ul automatizat
+                                                                                      env:
+                                                                                                FB_PAGE_URL: ${{ secrets.FB_PAGE_URL }}
+                                                                                                          WP_ENDPOINT: ${{ secrets.WP_ENDPOINT }}
+                                                                                                                    API_KEY: ${{ secrets.API_KEY }}
+                                                                                                                            run: node scraper.js
+                                                                                                                            
