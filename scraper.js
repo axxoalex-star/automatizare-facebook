@@ -32,13 +32,14 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
 
         await page.waitForTimeout(5000);
 
-        const firstPost = page.locator('div[role="article"]').first();
-        await firstPost.scrollIntoViewIfNeeded();
+        // Schimbam sa luam a doua postare (index 1 in loc de 0)
+        const targetPost = page.locator('div[role="article"]').nth(1);
+        await targetPost.scrollIntoViewIfNeeded();
 
         // --- EXPANSIE TEXT ---
         console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
         await page.evaluate(() => {
-            const article = document.querySelector('div[role="article"]');
+            const article = document.querySelectorAll('div[role="article"]')[1]; // A doua postare
             if (!article) return;
             const btn = Array.from(article.querySelectorAll('div[role="button"], span')).find(b => 
                 b.innerText.includes('Vezi mai mult') || b.innerText.includes('See more') || b.innerText.includes('... Mai mult')
@@ -55,7 +56,7 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         const screenshotPath = 'post.jpg';
         
         await page.evaluate(() => {
-            const article = document.querySelector('div[role="article"]');
+            const article = document.querySelectorAll('div[role="article"]')[1]; // A doua postare
             if (article) {
                 const toolbars = Array.from(article.querySelectorAll('div[role="button"], div[role="toolbar"]'));
                 toolbars.forEach(tb => {
@@ -67,11 +68,11 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
             }
         });
 
-        await firstPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 90 }); 
+        await targetPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 90 }); 
 
         // --- EXTRAGERE TEXT COMPLET ---
         const finalData = await page.evaluate(() => {
-            const article = document.querySelector('div[role="article"]');
+            const article = document.querySelectorAll('div[role="article"]')[1]; // A doua postare
             const msg = article ? article.querySelector('div[data-ad-comet-preview="message"]') : null;
             if (!msg) return null;
             
