@@ -113,28 +113,35 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         const finalData = await targetPost.evaluate((article) => {
             // Metoda 1: Incercam sa gasim div-ul oficial de "message" formatat de Facebook
             const msgNode = article.querySelector('[data-ad-comet-preview="message"]');
-            if (msgNode && msgNode.innerText.length > 10) {
+            if (msgNode && msgNode.innerText.trim().length > 10) {
                  return msgNode.innerText.replace(/See more|Vezi mai mult|\.\.\. Mai mult/gi, '').trim();
             }
 
-            // Metoda 2 (Fallback Agresiv): Luam TOT textul din interiorul postarii randate.
-            // Din moment ce am ascuns deja butoanele (Like/Share) mai sus, a ramas doar contentul brut.
-            let rawText = article.innerText;
-            let lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            // Metoda 2: Cautam cel mai lung bloc de text din toata postarea (de obicei ala e corpul mesajului)
+            const textContainers = Array.from(article.querySelectorAll('div[dir="auto"], span[dir="auto"]'));
+            let longestText = "";
+            let maxLength = 0;
+
+            for (let container of textContainers) {
+                let txt = container.innerText.trim();
+                // Ignoram meta-datele scurte gen "Author", "@nume", ora (22h), numarul de like-uri
+                if (
+                    txt.length > maxLength && 
+                    !txt.toLowerCase().includes('author') && 
+                    !txt.includes('@') && 
+                    !txt.match(/^[0-9]+[mhdw]$/) // de ex "22h" sau "4d"
+                ) {
+                    // Daca am gasit un text mai lung si mai valid
+                    maxLength = txt.length;
+                    longestText = txt;
+                }
+            }
             
-            // Filtram liniile "parazit" de la inceput (Nume Profil, "Favorite", Data postarii, etc.)
-            let cleanLines = lines.filter(l => {
-                const lower = l.toLowerCase();
-                if (lower.includes('lucian daniel stanciu')) return false;
-                if (lower.includes('stanciu-viziteu')) return false;
-                if (lower === 'favorite' || lower === 'follow' || lower === 'like') return false;
-                if (lower.includes('vezi mai mult') || lower.includes('see more') || lower.includes('... mai mult')) return false;
-                if (l.includes('·') && l.length < 20) return false; // de ex. 22h · 
-                return true;
-            });
-            
-            const result = cleanLines.join('\n\n').trim();
-            return result.length > 10 ? result : "Postare fara text";
+            if (longestText.length > 10) {
+                return longestText.replace(/See more|Vezi mai mult|\.\.\. Mai mult/gi, '').trim();
+            }
+
+            return "Postare fara text";
         });
 
         if (finalData === "Postare fara text") {
