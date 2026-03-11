@@ -28,5 +28,6 @@ jobs:
         env:
           FB_PAGE_URL: ${{ secrets.FB_PAGE_URL }}
           WP_ENDPOINT: ${{ secrets.WP_ENDPOINT }}
-          API_KEY: ${{ secrets.API_KEY }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASS: ${{ secrets.WP_APP_PASS }}
         run: node scraper.js
