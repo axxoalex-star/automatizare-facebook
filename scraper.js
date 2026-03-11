@@ -38,8 +38,7 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
 
         // --- EXPANSIE TEXT ---
         console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
-        await page.evaluate(() => {
-            const article = document.querySelectorAll('div[role="article"]')[1]; // A doua postare
+        await targetPost.evaluate((article) => {
             if (!article) return;
             const btn = Array.from(article.querySelectorAll('div[role="button"], span')).find(b => 
                 b.innerText.includes('Vezi mai mult') || b.innerText.includes('See more') || b.innerText.includes('... Mai mult')
@@ -55,8 +54,7 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         console.log("Realizam screenshot-ul postarii...");
         const screenshotPath = 'post.jpg';
         
-        await page.evaluate(() => {
-            const article = document.querySelectorAll('div[role="article"]')[1]; // A doua postare
+        await targetPost.evaluate((article) => {
             if (article) {
                 const toolbars = Array.from(article.querySelectorAll('div[role="button"], div[role="toolbar"]'));
                 toolbars.forEach(tb => {
@@ -71,17 +69,18 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         await targetPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 90 }); 
 
         // --- EXTRAGERE TEXT COMPLET ---
-        const finalData = await page.evaluate(() => {
-            const article = document.querySelectorAll('div[role="article"]')[1]; // A doua postare
+        const finalData = await targetPost.evaluate((article) => {
             const msg = article ? article.querySelector('div[data-ad-comet-preview="message"]') : null;
-            if (!msg) return null;
+            if (!msg) return "Postare fara text"; // Poate fi doar un live video sau o actualizare de coperta
             
             let cleanText = msg.innerText;
             cleanText = cleanText.replace(/See more|Vezi mai mult|\.\.\. Mai mult/gi, '').trim();
             return cleanText;
         });
 
-        if (!finalData) throw new Error("Nu am putut gasi corpul mesajului postarii.");
+        if (finalData === "Postare fara text") {
+            console.log("Avertisment: Nu s-a putut gasi textul, folosim titlu generic.");
+        }
 
         const title = finalData.split('\n')[0].slice(0, 90) + '...';
         console.log(`Date extrase cu succes! Titlu detectat: ${title}`);
