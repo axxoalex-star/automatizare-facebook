@@ -11,9 +11,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Preia sursele din Git
-        uses: actions/checkout@v4 # Actualizat la v4
+        uses: actions/checkout@v4
 
-      - name: Seteaza Node.js 22 # Folosim o versiune mai noua
+      - name: Seteaza Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
