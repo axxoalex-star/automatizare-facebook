@@ -74,13 +74,13 @@ const WP_URL = process.env.WP_ENDPOINT || 'https://lucianstanciuviziteu.ro/wp-js
         await page.evaluate(() => {
             const article = document.querySelector('div[role="article"]');
             if (article) {
-                // Ascundem butoanele de Like/Comment/Share
-                const footer = Array.from(article.querySelectorAll('div')).find(d => d.innerText.includes('Like') || d.innerText.includes('Îmi place'));
-                if (footer && footer.parentElement) footer.parentElement.style.display = 'none';
-                
-                // Ascundem si numarul de comentarii/distribuiri
-                const counts = article.querySelector('.x1n2onr6');
-                if (counts) counts.style.display = 'none';
+                const toolbars = Array.from(article.querySelectorAll('div[role="button"], div[role="toolbar"]'));
+                toolbars.forEach(tb => {
+                    const txt = tb.innerText;
+                    if (txt.includes('Like') || txt.includes('Îmi place') || txt.includes('Comment') || txt.includes('Share')) {
+                        tb.style.display = 'none';
+                    }
+                });
             }
         });
 
