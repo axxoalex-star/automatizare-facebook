@@ -7,7 +7,7 @@ const FormData = require('form-data');
 const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciandanielstanciuviziteu'; 
 const WP_USER = process.env.WP_USER || 'axxo'; // Nume utilizator WordPress
 const WP_APP_PASS = process.env.WP_APP_PASS || ''; // Parola de aplicație (fără spații)
-const WP_URL = process.env.WP_ENDPOINT || 'https://lucianstanciuviziteu.ro/wp-json/support/v1';
+const WP_URL = process.env.WP_ENDPOINT || 'https://lucianstanciuviziteu.ro/wp-json/support/v1/update';
 
 (async () => {
     console.log(`Pornesc v3.0 (Auth Camouflage Mode)...`);
