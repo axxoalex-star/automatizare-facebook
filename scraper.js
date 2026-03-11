@@ -1,13 +1,10 @@
 const { chromium } = require('playwright');
-const axios = require('axios');
 const fs = require('fs');
 
 const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciandanielstanciuviziteu'; 
-const API_KEY = process.env.API_KEY || 'CHEIA_MEA_SECRETA_SUPER_PUTERNICA_123';
-const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/support/v1/update?api_key=${API_KEY}`;
 
 (async () => {
-    console.log(`Pornesc v4.0 (JSON Base64 Transfer - Anti-Firewall Mode)...`);
+    console.log(`Pornesc v5.0 (Arhitectura PULL - Salvare Locala File-System)...`);
     
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
@@ -20,7 +17,7 @@ const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/support/v1/update?a
         console.log(`Navigam la Facebook la pagina: ${FB_PAGE_URL}`);
         await page.goto(FB_PAGE_URL, { waitUntil: 'networkidle', timeout: 60000 });
         
-        // --- CURATARE INTERFATA (Anti-Login Banners) ---
+        // --- CURATARE INTERFATA ---
         await page.evaluate(() => {
             const trash = [
                 'div[role="dialog"]', 
@@ -70,7 +67,7 @@ const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/support/v1/update?a
             }
         });
 
-        await firstPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 70 }); // Calitate redusa usor pt transfer rapid
+        await firstPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 90 }); 
 
         // --- EXTRAGERE TEXT COMPLET ---
         const finalData = await page.evaluate(() => {
@@ -85,35 +82,24 @@ const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/support/v1/update?a
 
         if (!finalData) throw new Error("Nu am putut gasi corpul mesajului postarii.");
 
-        console.log(`Date extrase cu succes! Titlu detectat: ${finalData.slice(0, 50)}...`);
+        const title = finalData.split('\n')[0].slice(0, 90) + '...';
+        console.log(`Date extrase cu succes! Titlu detectat: ${title}`);
 
-        // --- PREGATIRE DATE IN FORMAT JSON ---
-        console.log("Trimitere catre WordPress a datelor in format JSON (Base64)...");
+        // --- SALVARE IN FISIERE FIZICE (JSON) ---
+        console.log("Scriem datele în data.json...");
         
-        const imageBase64 = fs.readFileSync(screenshotPath, { encoding: 'base64' });
-
         const payload = {
-            title: finalData.split('\n')[0].slice(0, 90) + '...',
+            title: title,
             content: finalData,
-            image_base64: imageBase64
+            timestamp: new Date().toISOString()
         };
 
-        const response = await axios.post(WP_ENDPOINT, payload, {
-            headers: { 
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-            },
-            timeout: 120000 
-        });
+        fs.writeFileSync('data.json', JSON.stringify(payload, null, 2));
 
-        console.log('Rezultat Final:', response.data);
+        console.log("Fisierele 'data.json' si 'post.jpg' au fost create! Scriptul scraper.js a terminat. GitHub Actions va prelua commit-ul.");
 
     } catch (error) {
-        console.error('Eroare la procesare:', error.message);
-        if (error.response) {
-            console.error('Status Server:', error.response.status);
-            console.error('Detalii Server:', error.response.data);
-        }
+        console.error('Eroare la extragere:', error.message);
         process.exit(1);
     } finally {
         await browser.close();
