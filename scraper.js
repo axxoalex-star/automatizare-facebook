@@ -111,21 +111,30 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         await page.waitForTimeout(2000); 
         
         const finalData = await targetPost.evaluate((article) => {
-            // Incercam direct sa cautam elementul de baza al textului
-            let textElements = Array.from(article.querySelectorAll('div[data-ad-comet-preview="message"]'));
-            
-            // Daca nu il gaseste dupa atributul obisnuit, luam tot textul curat din containerul principal de deasupra formului de like-uri
-            if (textElements.length === 0) {
-                 const allTextDivs = Array.from(article.querySelectorAll('div[dir="auto"]'));
-                 // Luam doar div-urile care contin mult text, evitand numele autorului sau butoanele
-                 const potentialText = allTextDivs.find(div => div.innerText.length > 50 && !div.innerText.includes('Vezi mai mult'));
-                 if (potentialText) return potentialText.innerText;
-                 return "Postare fara text";
+            // Metoda 1: Incercam sa gasim div-ul oficial de "message" formatat de Facebook
+            const msgNode = article.querySelector('[data-ad-comet-preview="message"]');
+            if (msgNode && msgNode.innerText.length > 10) {
+                 return msgNode.innerText.replace(/See more|Vezi mai mult|\.\.\. Mai mult/gi, '').trim();
             }
+
+            // Metoda 2 (Fallback Agresiv): Luam TOT textul din interiorul postarii randate.
+            // Din moment ce am ascuns deja butoanele (Like/Share) mai sus, a ramas doar contentul brut.
+            let rawText = article.innerText;
+            let lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
             
-            let cleanText = textElements[0].innerText;
-            cleanText = cleanText.replace(/See more|Vezi mai mult|\.\.\. Mai mult/gi, '').trim();
-            return cleanText;
+            // Filtram liniile "parazit" de la inceput (Nume Profil, "Favorite", Data postarii, etc.)
+            let cleanLines = lines.filter(l => {
+                const lower = l.toLowerCase();
+                if (lower.includes('lucian daniel stanciu')) return false;
+                if (lower.includes('stanciu-viziteu')) return false;
+                if (lower === 'favorite' || lower === 'follow' || lower === 'like') return false;
+                if (lower.includes('vezi mai mult') || lower.includes('see more') || lower.includes('... mai mult')) return false;
+                if (l.includes('·') && l.length < 20) return false; // de ex. 22h · 
+                return true;
+            });
+            
+            const result = cleanLines.join('\n\n').trim();
+            return result.length > 10 ? result : "Postare fara text";
         });
 
         if (finalData === "Postare fara text") {
