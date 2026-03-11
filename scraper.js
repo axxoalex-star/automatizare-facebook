@@ -33,9 +33,10 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
 
         await page.waitForTimeout(5000);
 
-        // Preluam PRIMA postare de pe pagina (care este postarea de ieri, deoarece azi nu a fost postat nimic).
-        // Folosirea lui nth(1) inainte prindea din greseala primul comentariu al primei postari.
-        const targetPost = page.locator('div[role="article"]').first();
+        // --- GASIRE POSTARE ---
+        // Folosim un selector mult mai strict: postarile reale din timeline au mereu 'aria-posinset' in HTML.
+        // Asta previne Playwright de la a confunda "Bio-ul / Intro-ul" paginii cu o postare cand apeleaza .first()
+        const targetPost = page.locator('div[role="article"][aria-posinset="1"]');
         await targetPost.scrollIntoViewIfNeeded();
 
         // --- EXPANSIE TEXT ---
