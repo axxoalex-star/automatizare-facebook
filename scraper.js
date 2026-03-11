@@ -1,15 +1,13 @@
 const { chromium } = require('playwright');
 const axios = require('axios');
 const fs = require('fs');
-const FormData = require('form-data');
 
 const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciandanielstanciuviziteu'; 
 const API_KEY = process.env.API_KEY || 'CHEIA_MEA_SECRETA_SUPER_PUTERNICA_123';
-// Folosim direct API_KEY in URL pentru ca am observat ca merge perfect fara alerte de securitate
 const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/support/v1/update?api_key=${API_KEY}`;
 
 (async () => {
-    console.log(`Pornesc v3.2 (Super-Fast & Safe Mode)...`);
+    console.log(`Pornesc v4.0 (JSON Base64 Transfer - Anti-Firewall Mode)...`);
     
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
@@ -55,7 +53,7 @@ const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/support/v1/update?a
         });
         await page.waitForTimeout(4000);
 
-        // --- CAPTURA SCREENSHOT (Aceasta va fi poza principala) ---
+        // --- CAPTURA SCREENSHOT ---
         console.log("Realizam screenshot-ul postarii...");
         const screenshotPath = 'post.jpg';
         
@@ -72,7 +70,7 @@ const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/support/v1/update?a
             }
         });
 
-        await firstPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 80 });
+        await firstPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 70 }); // Calitate redusa usor pt transfer rapid
 
         // --- EXTRAGERE TEXT COMPLET ---
         const finalData = await page.evaluate(() => {
@@ -89,16 +87,20 @@ const WP_ENDPOINT = `https://lucianstanciuviziteu.ro/wp-json/support/v1/update?a
 
         console.log(`Date extrase cu succes! Titlu detectat: ${finalData.slice(0, 50)}...`);
 
-        // --- TRIMITERE CATRE WORDPRESS ---
-        console.log("Trimitere catre WordPress a datelor si imaginii...");
-        const form = new FormData();
-        form.append('title', finalData.split('\n')[0].slice(0, 90) + '...');
-        form.append('content', finalData);
-        form.append('image', fs.createReadStream(screenshotPath));
+        // --- PREGATIRE DATE IN FORMAT JSON ---
+        console.log("Trimitere catre WordPress a datelor in format JSON (Base64)...");
+        
+        const imageBase64 = fs.readFileSync(screenshotPath, { encoding: 'base64' });
 
-        const response = await axios.post(WP_ENDPOINT, form, {
+        const payload = {
+            title: finalData.split('\n')[0].slice(0, 90) + '...',
+            content: finalData,
+            image_base64: imageBase64
+        };
+
+        const response = await axios.post(WP_ENDPOINT, payload, {
             headers: { 
-                ...form.getHeaders(),
+                'Content-Type': 'application/json',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
             },
             timeout: 120000 
