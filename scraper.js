@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
+const axios = require('axios'); // Folosim axios pentru a descarca poza in varianta noua
 
 const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciandanielstanciuviziteu'; 
 
@@ -50,36 +51,85 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         });
         await page.waitForTimeout(4000);
 
-        // --- CAPTURA SCREENSHOT ---
-        console.log("Realizam screenshot-ul postarii...");
+        // --- EXTRAGERE IMAGINE REALA POSTARE ---
+        console.log("Incercam sa extragem poza originala a postarii...");
         const screenshotPath = 'post.jpg';
         
-        await targetPost.evaluate((article) => {
-            if (article) {
+        const imageUrl = await targetPost.evaluate((article) => {
+            const imgs = Array.from(article.querySelectorAll('img'));
+            let bestImg = null;
+            let maxArea = 0;
+            
+            for (let img of imgs) {
+                // Ignore elementele de interfata si emoji
+                if (img.src.includes('emoji') || img.src.includes('rsrc.php')) continue;
+                
+                let w = img.naturalWidth || img.width || img.clientWidth;
+                let h = img.naturalHeight || img.height || img.clientHeight;
+                let area = w * h;
+                
+                // Cautam imagini mari (postarile de obicei au imagini peste 300x300)
+                if (area > maxArea && w > 100 && h > 100) {
+                    maxArea = area;
+                    bestImg = img;
+                }
+            }
+            return bestImg ? bestImg.src : null;
+        });
+
+        if (imageUrl) {
+            console.log("Imagine gasita! URL: " + imageUrl.substring(0, 100) + "...");
+            try {
+                const response = await axios({
+                    url: imageUrl,
+                    method: 'GET',
+                    responseType: 'arraybuffer', // Pt a putea salva binar fiserul usor
+                    timeout: 20000
+                });
+                fs.writeFileSync(screenshotPath, response.data);
+                console.log("Poza postarii a fost descarcata cu succes.");
+            } catch (err) {
+                console.log("Eroare la descarcarea pozei. Facem screenshot fallback...");
+                await targetPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 90 }); 
+            }
+        } else {
+            console.log("Nu s-a gasit o imagine clara (poate e video sau text curat). Efectuam screenshot de rezerva...");
+            await targetPost.evaluate((article) => {
                 const toolbars = Array.from(article.querySelectorAll('div[role="button"], div[role="toolbar"]'));
                 toolbars.forEach(tb => {
                     const txt = tb.innerText;
-                    if (txt.includes('Like') || txt.includes('Îmi place') || txt.includes('Comment') || txt.includes('Share')) {
+                    if (txt && (txt.includes('Like') || txt.includes('Îmi place') || txt.includes('Comment') || txt.includes('Share'))) {
                         tb.style.display = 'none';
                     }
                 });
-            }
-        });
-
-        await targetPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 90 }); 
+            });
+            await targetPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 90 }); 
+        }
 
         // --- EXTRAGERE TEXT COMPLET ---
+        // Asteptam ca Facebook sa randeze textul complet
+        await page.waitForTimeout(2000); 
+        
         const finalData = await targetPost.evaluate((article) => {
-            const msg = article ? article.querySelector('div[data-ad-comet-preview="message"]') : null;
-            if (!msg) return "Postare fara text"; // Poate fi doar un live video sau o actualizare de coperta
+            // Incercam direct sa cautam elementul de baza al textului
+            let textElements = Array.from(article.querySelectorAll('div[data-ad-comet-preview="message"]'));
             
-            let cleanText = msg.innerText;
+            // Daca nu il gaseste dupa atributul obisnuit, luam tot textul curat din containerul principal de deasupra formului de like-uri
+            if (textElements.length === 0) {
+                 const allTextDivs = Array.from(article.querySelectorAll('div[dir="auto"]'));
+                 // Luam doar div-urile care contin mult text, evitand numele autorului sau butoanele
+                 const potentialText = allTextDivs.find(div => div.innerText.length > 50 && !div.innerText.includes('Vezi mai mult'));
+                 if (potentialText) return potentialText.innerText;
+                 return "Postare fara text";
+            }
+            
+            let cleanText = textElements[0].innerText;
             cleanText = cleanText.replace(/See more|Vezi mai mult|\.\.\. Mai mult/gi, '').trim();
             return cleanText;
         });
 
         if (finalData === "Postare fara text") {
-            console.log("Avertisment: Nu s-a putut gasi textul, folosim titlu generic.");
+            console.log("Avertisment: Nu s-a putut gasi textul specific. Salvez varianta simpla.");
         }
 
         const title = finalData.split('\n')[0].slice(0, 90) + '...';
