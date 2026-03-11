@@ -5,6 +5,10 @@ on:
     - cron: '0 9 * * *' # Rulează zilnic la ora 09:00 UTC
   workflow_dispatch: # Permite rularea manuală
 
+# V5.0: Dam permisiune lui GitHub Actions sa poata da Commit si Push inapoi in repository
+permissions:
+  contents: write
+
 jobs:
   run-scraper:
     runs-on: ubuntu-latest
@@ -19,13 +23,20 @@ jobs:
           node-version: 22
 
       - name: Instaleaza dependintele NPM
-        run: npm install
+        run: npm install axios form-data playwright
 
       - name: Instaleaza Chromium (Playwright)
         run: npx playwright install chromium
 
-      - name: Ruleaza scraper-ul automatizat
+      - name: Ruleaza scraper-ul automatizat (Salvare Locala V5.0)
         env:
           FB_PAGE_URL: ${{ secrets.FB_PAGE_URL }}
-          API_KEY: ${{ secrets.API_KEY }}
         run: node scraper.js
+
+      - name: Commit si Push datele salvate (data.json si post.jpg)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json post.jpg
+          # Va executa commit doar daca exista modificari
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Automatizare: Actualizare Postare Facebook [skip ci]" && git push)
