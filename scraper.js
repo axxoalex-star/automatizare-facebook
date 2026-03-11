@@ -33,8 +33,9 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
 
         await page.waitForTimeout(5000);
 
-        // Schimbam sa luam a doua postare (index 1 in loc de 0)
-        const targetPost = page.locator('div[role="article"]').nth(1);
+        // Preluam PRIMA postare de pe pagina (care este postarea de ieri, deoarece azi nu a fost postat nimic).
+        // Folosirea lui nth(1) inainte prindea din greseala primul comentariu al primei postari.
+        const targetPost = page.locator('div[role="article"]').first();
         await targetPost.scrollIntoViewIfNeeded();
 
         // --- EXPANSIE TEXT ---
