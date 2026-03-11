@@ -1,7 +1,7 @@
 {
-  "name": "fb-sync-scraper",
+  "name": "wp-content-helper",
   "version": "1.0.0",
-  "description": "Scrapes Facebook page and posts to WP API via Playwright",
+  "description": "Helper for WordPress content updates",
   "main": "scraper.js",
   "scripts": {
     "start": "node scraper.js"
