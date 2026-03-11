@@ -40,5 +40,10 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data.json post.jpg
-          git commit -m "Automatizare: Actualizat date Facebook" || echo "Fara modificari de salvat"
-          git push || echo "Nu am putut face push"
+          
+          if git diff --staged --quiet; then
+            echo "Fara modificari de salvat"
+          else
+            git commit -m "Automatizare: Actualizat date Facebook"
+            git push
+          fi
