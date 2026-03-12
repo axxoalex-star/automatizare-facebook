@@ -41,26 +41,23 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
 
         // --- EXPANSIE TEXT ---
         console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
+        // --- EXPANSIE TEXT ---
+        console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
         try {
-            // Facebook blochează uneori event-urile. Folosim o abordare dublă ("Double-Tap"):
-            // 1. Click Nativ prin DOM (cel mai sigur si direct din interiorul browserului)
-            await targetPost.evaluate((article) => {
-                const elements = Array.from(article.querySelectorAll('div[role="button"], span, a'));
-                const expandBtn = elements.find(el => 
-                    el.innerText && (el.innerText.includes('Vezi mai mult') || el.innerText.includes('See more') || el.innerText.includes('Mai mult'))
-                );
-                if (expandBtn) {
-                    expandBtn.click();
-                }
-            });
-
-            // 2. Click prin Playwright (force:true) pntru siguranta suprapunerilor de straturi
-            const btn = targetPost.locator('div[role="button"], span').filter({ hasText: /Vezi mai mult|See more|\.\.\. Mai mult/i }).first();
-            if (await btn.isVisible({ timeout: 2000 })) {
-                await btn.click({ force: true });
-            }
+            // Unele butoane Vezi mai mult au ascunsa acțiunea în React handler-ul exact pe textul vizibil
+            // Playwright .click() pe text direct mimeaza degetul uman pe ecran
+            const expandLocators = targetPost.locator('text=/Vezi mai mult|See more|\.\.\. Mai mult/i');
             
-            console.log("Am trimis comenzile de click pentru expandare.");
+            // Aflăm câte astfel de butoane sunt (uneori fb ascunde comentarii) și dăm click pe PRIMUL
+            if (await expandLocators.count() > 0) {
+                const btn = expandLocators.first();
+                if (await btn.isVisible({ timeout: 2000 })) {
+                    console.log("Am găsit butonul de expandare, forțăm apăsarea (force: true)...");
+                    await btn.click({ force: true });
+                }
+            } else {
+                console.log("Nu am găsit un buton vizibil de 'Vezi mai mult'. Textul este probabil deja scurt și vizibil în întregime.");
+            }
         } catch (e) {
             console.log("Avertisment la click-ul de expandare:", e.message);
         }
@@ -126,28 +123,31 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         // --- EXTRAGERE TEXT COMPLET ---
         let finalData = "Postare fara text";
         try {
-            let extractedText = "";
-            const primaryMessage = targetPost.locator('[data-ad-comet-preview="message"]');
+            // Iterăm direct prin fiecare block de text "auto" scris de la stânga la dreapta
+            // și unificăm interiorul de text pentru a păstra fiecare paragraf corect 
+            // delimitat de o linie nouă, ignorând tag-urile HTML de reacții
+            const textLocator = targetPost.locator('div[dir="auto"]');
+            const elementCount = await textLocator.count();
             
-            // Metoda 1 (oficiala): Cautam blocul de mesaj nativ definit de Facebook
-            if (await primaryMessage.count() > 0) {
-                const texts = await primaryMessage.allInnerTexts();
-                extractedText = texts.join('\n\n').trim();
-            }
-
-            // Metoda 2 (fallback): Daca textul este foarte scurt (poate nu s-a preluat tot din cauza noului design fb), cautam din nou in div[dir="auto"]
-            if (extractedText.length < 150) {
-                console.log("Textul extras prin metoda principala pare scurt. Cautam si in selectorul manual...");
-                const textLocator = targetPost.locator('div[dir="auto"] >> div[style*="text-align: start"]');
-                if (await textLocator.count() > 0) {
-                    const texts = await textLocator.allInnerTexts();
-                    let manualText = texts.join('\n\n').trim();
-                    if (manualText.length > extractedText.length) {
-                        extractedText = manualText;
-                    }
+            let allParagraphs = [];
+            for (let i = 0; i < elementCount; i++) {
+                let pText = await textLocator.nth(i).innerText();
+                let txt = pText.trim();
+                
+                // Excludem bucățile de span cu semnături scurte (Ore, Like-uri, Autori)
+                if (
+                    txt.length > 5 &&
+                    !txt.match(/^[0-9]+\s*(m|h|d|w)$/) && 
+                    !txt.includes('@') && 
+                    !txt.toLowerCase().includes('lucian daniel') // evitam re-inregistrarea numelui tău
+                ) {
+                    allParagraphs.push(txt);
                 }
             }
-
+            
+            // Unificăm tot array-ul format din elementele filtratte de React ca fiind texte de postare
+            let extractedText = allParagraphs.join('\n\n');
+            
             if (extractedText.trim().length > 5) {
                 finalData = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
             }
