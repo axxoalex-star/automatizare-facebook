@@ -125,47 +125,47 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         // --- EXTRAGERE TEXT COMPLET ---
         // Nu mai asteptam extra, am asteptat deja 5 secunde dupa click pe "Vezi mai mult"
         
-        const finalData = await targetPost.evaluate((article) => {
-            // Metoda 1 (Cea mai fiabila): Div-ul oficial al mesajului de pe Facebook
-            const msgNode = article.querySelector('[data-ad-comet-preview="message"]');
-            if (msgNode && msgNode.innerText.trim().length > 10) {
-                // Curatam explicit cuvintele "Vezi mai mult / See more" din text
-                return msgNode.innerText.replace(/\s*(See more|Vezi mai mult|\.\.\. Mai mult)\s*/gi, ' ').trim();
+        let finalData = "Postare fara text";
+        try {
+            // Metoda bruta dar sigura: cautam containerul unde Facebook varsă tot textul postării după expandare
+            const textLocator = targetPost.locator('div[dir="auto"] >> div[style*="text-align: start"]');
+            
+            let extractedText = "";
+            if (await textLocator.count() > 0) {
+                // Pot fi mai multe paragrafe separate cu astfel de div-uri
+                const texts = await textLocator.allInnerTexts();
+                extractedText = texts.join('\n\n').trim();
             }
 
-            // Metoda 2 (Fallback): Colectam textul din TOATE span-urile cu text real (tehnica TreeWalker)
-            // Aceasta metoda prinde chiar si textul din span-uri imbricate profund, pe care innerText le poate rata
-            const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, null);
-            let allText = [];
-            let node;
-            while ((node = walker.nextNode())) {
-                const txt = node.textContent.trim();
-                const parent = node.parentElement;
-                const tag = parent ? parent.tagName.toLowerCase() : '';
-                const role = parent ? parent.getAttribute('role') : '';
+            // Daca textul are sub 200 caractere la o postare aparent lunga, inseamna ca selectorul a esuat (poate avea alta structura HTML azi)
+            if (extractedText.length < 200) {
+                console.log("Textul extras inițial este scurt (<200 char). Încercăm selectori de rezervă...");
+                const fallbackMessage = targetPost.locator('[data-ad-comet-preview="message"]');
                 
-                // Sarim textele de la butoane, aria si elemente UI
-                if (role === 'button' || role === 'link' || role === 'navigation') continue;
-                if (['script', 'style', 'svg', 'path'].includes(tag)) continue;
-                if (txt.length === 0) continue;
-                // Sarim metadatele specifice: ore (22h, 4d), like-uri, emotii
-                if (txt.match(/^\d+(h|m|d|w)$/) || txt.match(/^\d+\.?\d*K?$/) || txt.length < 3) continue;
-                if (['See more', 'Vezi mai mult', 'Favorite', 'Follow', 'Like', 'Share', 'Comment', 'Comentariu', 'Distribuie'].includes(txt)) continue;
+                if (await fallbackMessage.count() > 0) {
+                    const fallbackTexts = await fallbackMessage.allInnerTexts();
+                    let fallText = fallbackTexts.join('\n\n').trim();
+                    if (fallText.length > extractedText.length) extractedText = fallText;
+                }
                 
-                allText.push(txt);
-            }
-            
-            // Unim textele unique si eliminam duplicate consecutive
-            const uniqueLines = [];
-            for (let t of allText) {
-                if (uniqueLines.length === 0 || uniqueLines[uniqueLines.length - 1] !== t) {
-                    uniqueLines.push(t);
+                if (extractedText.length < 200) {
+                    // Selectorul de rezerva pe tot role="article"
+                    console.log("Folosim extragerea totală de pe articol ca metodă finală def fallback...");
+                    const articleText = await targetPost.innerText();
+                    if (articleText.length > extractedText.length) {
+                        extractedText = articleText;
+                    }
                 }
             }
+
+            if (extractedText.trim().length > 10) {
+                // O singura replace simpla fara conditii complexe
+                finalData = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
+            }
             
-            const result = uniqueLines.join(' ').trim();
-            return result.length > 10 ? result : 'Postare fara text';
-        });
+        } catch (e) {
+            console.log("Eroare la colectarea textului:", e.message);
+        }
 
         if (finalData === "Postare fara text") {
             console.log("Avertisment: Nu s-a putut gasi textul specific. Salvez varianta simpla.");
