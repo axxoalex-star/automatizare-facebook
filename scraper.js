@@ -125,56 +125,43 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         // --- EXTRAGERE TEXT COMPLET ---
         let finalData = "Postare fara text";
         try {
-            // Caută containerul principal al postării și extrage toate elementele div care au atributul dir="auto"
-            const textLocator = targetPost.locator('div[dir="auto"]');
-            const elementCount = await textLocator.count();
+            // Căutare 'chirurgicală' strică a containerului de mesaj
+            const messageBox = targetPost.locator('[data-ad-preview="message"], [data-ad-comet-preview="message"]').first();
             
-            let allParagraphs = [];
-            for (let i = 0; i < elementCount; i++) {
-                let pText = await textLocator.nth(i).innerText();
-                let txt = pText.trim();
+            if (await messageBox.count() > 0) {
+                let extractedText = await messageBox.innerText();
                 
-                // Elimină spațiile goale și metadatele foarte scurte pur informative
-                if (txt.length > 0 && !txt.match(/^[0-9]+\s*(m|h|d|w)$/) && !txt.includes('@')) {
-                    allParagraphs.push(txt);
+                if (extractedText && extractedText.trim().length > 5) {
+                    // Curățăm doar rudimentele lăsate în urmă de butonul "Vezi mai mult", care pot fi la sfârșitul paragrafului
+                    let cleanText = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
+                    
+                    // Filtrarea duplicatelor (pentru titlu)
+                    let lines = cleanText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    
+                    // Dacă primele două linii sunt identice, elimină una
+                    if (lines.length > 1 && lines[0] === lines[1]) {
+                        lines.shift();
+                    }
+                    
+                    finalData = lines.join('\n\n');
                 }
+            } else {
+                console.log("Nu am putut gasi selectorul de mesaj master.");
             }
-            
-            let extractedText = allParagraphs.join('\n').trim();
-
-            // Dacă textul extras are mai puțin de 50 de caractere, punem fallback larg
-            if (extractedText.length < 50) {
-                console.log("Text vizibil extrem de scurt (<50 char). Încercăm fallback global pe articol...");
-                extractedText = await targetPost.innerText();
-                // Eliminăm manual cuvintele de sistem la ieșire globală
-                extractedText = extractedText.replace(/Like|Share|Comment|Îmi place|Comentează|Distribuie|Vezi mai mult|See more/gi, '').trim();
-            }
-
-            if (extractedText.trim().length > 5) {
-                // Curăță textul predefinit de Vezi mai mult
-                let cleanText = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
-                
-                // Filtrarea duplicatelor (pentru titlu dublat) și ocolirea rândurilor goale
-                let lines = cleanText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                
-                // Dacă primele două linii sunt identice, elimină una din ele
-                if (lines.length > 1 && lines[0] === lines[1]) {
-                    lines.shift();
-                }
-                
-                finalData = lines.join('\n\n');
-            }
-            
         } catch (e) {
             console.log("Eroare la colectarea textului:", e.message);
         }
 
-        if (finalData === "Postare fara text") {
+        if (finalData === "Postare fara text" || finalData.length < 5) {
+            finalData = "Postare fara text";
             console.log("Avertisment: Nu s-a putut gasi textul specific. Salvez varianta simpla.");
         }
 
         const title = finalData.split('\n')[0].slice(0, 90) + '...';
         console.log(`Date extrase cu succes! Titlu detectat: ${title}`);
+
+        // Adăugăm debugger pentru vizualizare lungime în GitHub logs
+        console.log("DEBUG TEXT LUNGIME: ", finalData.length, "caractere");
 
         // --- SALVARE IN FISIERE FIZICE (JSON) ---
         console.log("Scriem datele în data.json...");
