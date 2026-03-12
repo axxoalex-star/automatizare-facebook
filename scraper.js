@@ -40,26 +40,46 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         await targetPost.scrollIntoViewIfNeeded();
 
         // --- EXPANSIE TEXT ---
-        console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
-        // --- EXPANSIE TEXT ---
-        console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
+        console.log("Căutăm și apăsăm pe 'Vezi mai mult' prin injectare JS...");
         try {
-            // Unele butoane Vezi mai mult au ascunsa acțiunea în React handler-ul exact pe textul vizibil
-            // Playwright .click() pe text direct mimeaza degetul uman pe ecran
-            const expandLocators = targetPost.locator('text=/Vezi mai mult|See more|\.\.\. Mai mult/i');
+            let expanded = false;
             
-            // Aflăm câte astfel de butoane sunt (uneori fb ascunde comentarii) și dăm click pe PRIMUL
-            if (await expandLocators.count() > 0) {
-                const btn = expandLocators.first();
-                if (await btn.isVisible({ timeout: 2000 })) {
-                    console.log("Am găsit butonul de expandare, forțăm apăsarea (force: true)...");
-                    await btn.click({ force: true });
+            // Verificăm într-o buclă de 5 secunde
+            for (let i = 0; i < 5; i++) {
+                // Executăm click-ul direct din interiorul DOM-ului (mecanismul intern al browserului)
+                await targetPost.evaluate((article) => {
+                    const elements = Array.from(article.querySelectorAll('div[role="button"], span, div'));
+                    for (let el of elements) {
+                        const txt = el.innerText;
+                        if (txt && (txt === 'Vezi mai mult' || txt === 'See more' || txt.includes('... Mai mult'))) {
+                            el.click();
+                            // Facebook ascunde comanda câteodată pe părinte
+                            if (el.parentElement) el.parentElement.click();
+                        }
+                    }
+                });
+
+                // Așteptăm 1 secundă pentru randarea React
+                await page.waitForTimeout(1000);
+
+                // Verificăm dacă lungimea textului a crescut corect
+                const msgBox = targetPost.locator('[data-ad-preview="message"], [data-ad-comet-preview="message"]').first();
+                if (await msgBox.count() > 0) {
+                    const text = await msgBox.innerText();
+                    if (text.length > 100) {
+                        expanded = true;
+                        break; // Ieșim din buclă, textul e destul de lung
+                    }
                 }
+            }
+
+            if (!expanded) {
+                console.log("FAIL: Butonul nu a expandat textul");
             } else {
-                console.log("Nu am găsit un buton vizibil de 'Vezi mai mult'. Textul este probabil deja scurt și vizibil în întregime.");
+                console.log("Succes: Textul a fost expandat vizual.");
             }
         } catch (e) {
-            console.log("Avertisment la click-ul de expandare:", e.message);
+            console.log("Eroare severă la click-ul de expandare:", e.message);
         }
         console.log("Forțăm scroll în jos și în sus pentru încărcarea/randarea completă a textului...");
         await page.mouse.wheel(0, 300);
