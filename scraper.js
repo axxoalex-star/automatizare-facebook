@@ -61,9 +61,11 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         } catch (e) {
             console.log("Avertisment la click-ul de expandare:", e.message);
         }
-        
-        // Asteptam 5 secunde pentru ca React-ul de pe Facebook sa expandeze complet textul inainte de a-l citi
-        await page.waitForTimeout(5000);
+        console.log("Forțăm scroll în jos și în sus pentru încărcarea/randarea completă a textului...");
+        await page.mouse.wheel(0, 300);
+        await page.waitForTimeout(1000);
+        await targetPost.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(2000);
 
         // --- EXTRAGERE IMAGINE REALA POSTARE ---
         console.log("Incercam sa extragem poza originala a postarii...");
@@ -123,19 +125,36 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         // --- EXTRAGERE TEXT COMPLET ---
         let finalData = "Postare fara text";
         try {
-            // Metoda bruta dar curata: cautam strict în interiorul atributului de mesaj, ignorând zona de comentarii
-            const messageContainer = targetPost.locator('[data-ad-comet-preview="message"]').first();
+            // Caută containerul principal al postării și extrage toate elementele div care au atributul dir="auto"
+            const textLocator = targetPost.locator('div[dir="auto"]');
+            const elementCount = await textLocator.count();
             
-            let extractedText = "";
-            if (await messageContainer.count() > 0) {
-                extractedText = await messageContainer.innerText();
+            let allParagraphs = [];
+            for (let i = 0; i < elementCount; i++) {
+                let pText = await textLocator.nth(i).innerText();
+                let txt = pText.trim();
+                
+                // Elimină spațiile goale și metadatele foarte scurte pur informative
+                if (txt.length > 0 && !txt.match(/^[0-9]+\s*(m|h|d|w)$/) && !txt.includes('@')) {
+                    allParagraphs.push(txt);
+                }
+            }
+            
+            let extractedText = allParagraphs.join('\n').trim();
+
+            // Dacă textul extras are mai puțin de 50 de caractere, punem fallback larg
+            if (extractedText.length < 50) {
+                console.log("Text vizibil extrem de scurt (<50 char). Încercăm fallback global pe articol...");
+                extractedText = await targetPost.innerText();
+                // Eliminăm manual cuvintele de sistem la ieșire globală
+                extractedText = extractedText.replace(/Like|Share|Comment|Îmi place|Comentează|Distribuie|Vezi mai mult|See more/gi, '').trim();
             }
 
             if (extractedText.trim().length > 5) {
                 // Curăță textul predefinit de Vezi mai mult
                 let cleanText = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
                 
-                // Filtrarea duplicatelor (pentru titlu) și eliminarele rândurilor goale
+                // Filtrarea duplicatelor (pentru titlu dublat) și ocolirea rândurilor goale
                 let lines = cleanText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
                 
                 // Dacă primele două linii sunt identice, elimină una din ele
