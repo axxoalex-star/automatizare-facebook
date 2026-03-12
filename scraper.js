@@ -33,14 +33,25 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
 
         await page.waitForTimeout(5000);
 
-        // --- GASIRE POSTARE ---
-        // Folosim un selector mult mai strict: postarile reale din timeline au mereu 'aria-posinset' in HTML.
-        // Asta previne Playwright de la a confunda "Bio-ul / Intro-ul" paginii cu o postare cand apeleaza .first()
-        const targetPost = page.locator('div[role="article"][aria-posinset="1"]');
-        await targetPost.scrollIntoViewIfNeeded();
+        // --- GASIRE POSTARI ---
+        let allPostsData = [];
+        
+        for (let postIndex = 1; postIndex <= 3; postIndex++) {
+            console.log(`\n============================`);
+            console.log(`Cautam postarea numarul: ${postIndex}`);
+            console.log(`============================`);
+            
+            const targetPost = page.locator(`div[role="article"][aria-posinset="${postIndex}"]`);
+            
+            if (await targetPost.count() === 0) {
+                console.log(`Postarea numarul ${postIndex} nu a putut fi gasita in HTML. Abandonez căutarea la acest index...`);
+                continue;
+            }
+            
+            await targetPost.scrollIntoViewIfNeeded();
 
-        // --- EXPANSIE TEXT ---
-        console.log("Căutăm și apăsăm pe 'Vezi mai mult' prin injectare JS...");
+            // --- EXPANSIE TEXT ---
+            console.log("Căutăm și apăsăm pe 'Vezi mai mult' prin injectare JS...");
         try {
             let expanded = false;
             
@@ -89,7 +100,8 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
 
         // --- EXTRAGERE IMAGINE REALA POSTARE ---
         console.log("Incercam sa extragem poza originala a postarii...");
-        const screenshotPath = 'post.jpg';
+        const imageIndexStr = postIndex - 1;
+        const screenshotPath = `post_${imageIndexStr}.jpg`;
         
         const imageUrl = await targetPost.evaluate((article) => {
             const imgs = Array.from(article.querySelectorAll('img'));
@@ -123,7 +135,7 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
                     timeout: 20000
                 });
                 fs.writeFileSync(screenshotPath, response.data);
-                console.log("Poza postarii a fost descarcata cu succes.");
+                console.log(`Poza postarii a fost descarcata cu succes ca ${screenshotPath}.`);
             } catch (err) {
                 console.log("Eroare la descarcarea pozei. Facem screenshot fallback...");
                 await targetPost.screenshot({ path: screenshotPath, type: 'jpeg', quality: 90 }); 
@@ -178,23 +190,26 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         }
 
         const title = finalData.split('\n')[0].slice(0, 90) + '...';
-        console.log(`Date extrase cu succes! Titlu detectat: ${title}`);
+        console.log(`Date extrase cu succes pentru postarea ${postIndex}! Titlu detectat: ${title}`);
 
         // Adăugăm debugger pentru vizualizare lungime în GitHub logs
         console.log("DEBUG TEXT LUNGIME: ", finalData.length, "caractere");
 
-        // --- SALVARE IN FISIERE FIZICE (JSON) ---
-        console.log("Scriem datele în data.json...");
-        
-        const payload = {
+        allPostsData.push({
             title: title,
             content: finalData,
+            image: screenshotPath,
             timestamp: new Date().toISOString()
-        };
+        });
+        
+        } // Inchidere bucla For (primele 3 postari)
 
-        fs.writeFileSync('data.json', JSON.stringify(payload, null, 2));
+        // --- SALVARE IN FISIERE FIZICE (JSON) ---
+        console.log(`\nScriem un numar de ${allPostsData.length} postari in data.json...`);
+        
+        fs.writeFileSync('data.json', JSON.stringify(allPostsData, null, 2));
 
-        console.log("Fisierele 'data.json' si 'post.jpg' au fost create! Scriptul scraper.js a terminat. GitHub Actions va prelua commit-ul.");
+        console.log("Fisierele 'data.json' si imaginile asociate au fost create! Scriptul scraper.js a terminat. GitHub Actions va prelua commit-ul.");
 
     } catch (error) {
         console.error('Eroare la extragere:', error.message);
