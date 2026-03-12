@@ -127,39 +127,30 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         
         let finalData = "Postare fara text";
         try {
-            // Metoda bruta dar sigura: cautam containerul unde Facebook varsă tot textul postării după expandare
+            // Metoda bruta dar sigura recomandata: cautam containerul unde Facebook varsă tot textul postării după expandare
+            // Facebook aliniaza paragrafele manual la start
             const textLocator = targetPost.locator('div[dir="auto"] >> div[style*="text-align: start"]');
             
             let extractedText = "";
             if (await textLocator.count() > 0) {
-                // Pot fi mai multe paragrafe separate cu astfel de div-uri
+                // Pot fi mai multe paragrafe separate
                 const texts = await textLocator.allInnerTexts();
                 extractedText = texts.join('\n\n').trim();
             }
 
-            // Daca textul are sub 200 caractere la o postare aparent lunga, inseamna ca selectorul a esuat (poate avea alta structura HTML azi)
-            if (extractedText.length < 200) {
-                console.log("Textul extras inițial este scurt (<200 char). Încercăm selectori de rezervă...");
+            // Daca selectorul de mai sus nu ofera un text concludent, ecranele noi de FB ar putea folosi data-ad-comet-preview
+            if (extractedText.length < 20) {
+                console.log("Textul principal nu a fost gasit. Incercam atributul oficial de mesaj...");
                 const fallbackMessage = targetPost.locator('[data-ad-comet-preview="message"]');
                 
                 if (await fallbackMessage.count() > 0) {
                     const fallbackTexts = await fallbackMessage.allInnerTexts();
-                    let fallText = fallbackTexts.join('\n\n').trim();
-                    if (fallText.length > extractedText.length) extractedText = fallText;
-                }
-                
-                if (extractedText.length < 200) {
-                    // Selectorul de rezerva pe tot role="article"
-                    console.log("Folosim extragerea totală de pe articol ca metodă finală def fallback...");
-                    const articleText = await targetPost.innerText();
-                    if (articleText.length > extractedText.length) {
-                        extractedText = articleText;
-                    }
+                    extractedText = fallbackTexts.join('\n\n').trim();
                 }
             }
 
             if (extractedText.trim().length > 10) {
-                // O singura replace simpla fara conditii complexe
+                // Curățăm doar rămășițele butoanelor de text expandabile, nimic altceva
                 finalData = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
             }
             
