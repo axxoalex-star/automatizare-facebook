@@ -41,17 +41,25 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
 
         // --- EXPANSIE TEXT ---
         console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
-        await targetPost.evaluate((article) => {
-            if (!article) return;
-            const btn = Array.from(article.querySelectorAll('div[role="button"], span')).find(b => 
-                b.innerText.includes('Vezi mai mult') || b.innerText.includes('See more') || b.innerText.includes('... Mai mult')
-            );
-            if (btn) {
-                btn.scrollIntoView();
-                btn.click();
+        try {
+            // Playwright .locator('text=...') gaseste elementul care contine textul respectiv. 
+            // Apelam click() din afara (metoda nativa a Playwright) pentru a mima un click real de mouse,
+            // altfel React-ul de pe Facebook nu inregistreaza eventul prin simplify JS .click()
+            const btn = targetPost.locator('text=Vezi mai mult').first();
+            const btnEng = targetPost.locator('text=See more').first();
+            
+            if (await btn.isVisible({ timeout: 2000 })) {
+                await btn.click();
+                console.log("Succes: Am expandat textul cu 'Vezi mai mult'.");
+            } else if (await btnEng.isVisible({ timeout: 1000 })) {
+                await btnEng.click();
+                console.log("Succes: Am expandat textul cu 'See more'.");
             }
-        });
-        await page.waitForTimeout(4000);
+        } catch (e) {
+            console.log("Expansiunea textului nu a fost detectata, il lasam asa.");
+        }
+        // Asteptam 5 secunde pentru ca React-ul de pe Facebook sa expandeze complet textul inainte de a-l citi
+        await page.waitForTimeout(5000);
 
         // --- EXTRAGERE IMAGINE REALA POSTARE ---
         console.log("Incercam sa extragem poza originala a postarii...");
@@ -109,41 +117,48 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         }
 
         // --- EXTRAGERE TEXT COMPLET ---
-        // Asteptam ca Facebook sa randeze textul complet
-        await page.waitForTimeout(2000); 
+        // Nu mai asteptam extra, am asteptat deja 5 secunde dupa click pe "Vezi mai mult"
         
         const finalData = await targetPost.evaluate((article) => {
-            // Metoda 1: Incercam sa gasim div-ul oficial de "message" formatat de Facebook
+            // Metoda 1 (Cea mai fiabila): Div-ul oficial al mesajului de pe Facebook
             const msgNode = article.querySelector('[data-ad-comet-preview="message"]');
             if (msgNode && msgNode.innerText.trim().length > 10) {
-                 return msgNode.innerText.replace(/See more|Vezi mai mult|\.\.\. Mai mult/gi, '').trim();
+                // Curatam explicit cuvintele "Vezi mai mult / See more" din text
+                return msgNode.innerText.replace(/\s*(See more|Vezi mai mult|\.\.\. Mai mult)\s*/gi, ' ').trim();
             }
 
-            // Metoda 2: Cautam cel mai lung bloc de text din toata postarea (de obicei ala e corpul mesajului)
-            const textContainers = Array.from(article.querySelectorAll('div[dir="auto"], span[dir="auto"]'));
-            let longestText = "";
-            let maxLength = 0;
-
-            for (let container of textContainers) {
-                let txt = container.innerText.trim();
-                // Ignoram meta-datele scurte gen "Author", "@nume", ora (22h), numarul de like-uri
-                if (
-                    txt.length > maxLength && 
-                    !txt.toLowerCase().includes('author') && 
-                    !txt.includes('@') && 
-                    !txt.match(/^[0-9]+[mhdw]$/) // de ex "22h" sau "4d"
-                ) {
-                    // Daca am gasit un text mai lung si mai valid
-                    maxLength = txt.length;
-                    longestText = txt;
+            // Metoda 2 (Fallback): Colectam textul din TOATE span-urile cu text real (tehnica TreeWalker)
+            // Aceasta metoda prinde chiar si textul din span-uri imbricate profund, pe care innerText le poate rata
+            const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, null);
+            let allText = [];
+            let node;
+            while ((node = walker.nextNode())) {
+                const txt = node.textContent.trim();
+                const parent = node.parentElement;
+                const tag = parent ? parent.tagName.toLowerCase() : '';
+                const role = parent ? parent.getAttribute('role') : '';
+                
+                // Sarim textele de la butoane, aria si elemente UI
+                if (role === 'button' || role === 'link' || role === 'navigation') continue;
+                if (['script', 'style', 'svg', 'path'].includes(tag)) continue;
+                if (txt.length === 0) continue;
+                // Sarim metadatele specifice: ore (22h, 4d), like-uri, emotii
+                if (txt.match(/^\d+(h|m|d|w)$/) || txt.match(/^\d+\.?\d*K?$/) || txt.length < 3) continue;
+                if (['See more', 'Vezi mai mult', 'Favorite', 'Follow', 'Like', 'Share', 'Comment', 'Comentariu', 'Distribuie'].includes(txt)) continue;
+                
+                allText.push(txt);
+            }
+            
+            // Unim textele unique si eliminam duplicate consecutive
+            const uniqueLines = [];
+            for (let t of allText) {
+                if (uniqueLines.length === 0 || uniqueLines[uniqueLines.length - 1] !== t) {
+                    uniqueLines.push(t);
                 }
             }
             
-            if (longestText.length > 10) {
-                return longestText.replace(/See more|Vezi mai mult|\.\.\. Mai mult/gi, '').trim();
-            }
-
-            return "Postare fara text";
+            const result = uniqueLines.join(' ').trim();
+            return result.length > 10 ? result : 'Postare fara text';
         });
 
         if (finalData === "Postare fara text") {
