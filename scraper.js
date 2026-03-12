@@ -42,25 +42,29 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         // --- EXPANSIE TEXT ---
         console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
         try {
-            // Facebook pune 'Vezi mai mult' ori in div, ori in span. Folosim locatorul strict pe text:
-            const btn = targetPost.locator('text=/Vezi mai mult|See more|\\.\\.\\. Mai mult/i').last();
-            
-            if (await btn.isVisible({ timeout: 3000 })) {
-                console.log("Am găsit butonul de expandare, forțăm apăsarea (force: true)...");
-                await btn.click({ force: true });
-                
-                try {
-                    await btn.waitFor({ state: 'hidden', timeout: 3000 });
-                    console.log("Succes: Textul a fost expandat vizual complet.");
-                } catch (timeoutErr) {
-                    console.log("Avertisment: Butonul nu a dorit să dispară complet din cod, dar textul probabil s-a deschis.");
+            // Facebook blochează uneori event-urile. Folosim o abordare dublă ("Double-Tap"):
+            // 1. Click Nativ prin DOM (cel mai sigur si direct din interiorul browserului)
+            await targetPost.evaluate((article) => {
+                const elements = Array.from(article.querySelectorAll('div[role="button"], span, a'));
+                const expandBtn = elements.find(el => 
+                    el.innerText && (el.innerText.includes('Vezi mai mult') || el.innerText.includes('See more') || el.innerText.includes('Mai mult'))
+                );
+                if (expandBtn) {
+                    expandBtn.click();
                 }
-            } else {
-                console.log("Nu am găsit un buton vizibil de 'Vezi mai mult'. Textul este probabil deja scurt și vizibil în întregime.");
+            });
+
+            // 2. Click prin Playwright (force:true) pntru siguranta suprapunerilor de straturi
+            const btn = targetPost.locator('div[role="button"], span').filter({ hasText: /Vezi mai mult|See more|\.\.\. Mai mult/i }).first();
+            if (await btn.isVisible({ timeout: 2000 })) {
+                await btn.click({ force: true });
             }
+            
+            console.log("Am trimis comenzile de click pentru expandare.");
         } catch (e) {
-            console.log("Eroare la procesul de expansiune a textului:", e.message);
+            console.log("Avertisment la click-ul de expandare:", e.message);
         }
+        
         // Asteptam 5 secunde pentru ca React-ul de pe Facebook sa expandeze complet textul inainte de a-l citi
         await page.waitForTimeout(5000);
 
@@ -120,8 +124,6 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         }
 
         // --- EXTRAGERE TEXT COMPLET ---
-        // Nu mai asteptam extra, am asteptat deja 5 secunde dupa click pe "Vezi mai mult"
-        
         let finalData = "Postare fara text";
         try {
             let extractedText = "";
@@ -133,18 +135,20 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
                 extractedText = texts.join('\n\n').trim();
             }
 
-            // Metoda 2 (fallback): Daca nu l-a gasit (design modificat ad-hoc de fb), tragem paragrafe de text
-            if (extractedText.length < 5) {
-                console.log("Nu am gasit selectorul de mesaj oficial, incercam detectia paragrafelor manuale...");
+            // Metoda 2 (fallback): Daca textul este foarte scurt (poate nu s-a preluat tot din cauza noului design fb), cautam din nou in div[dir="auto"]
+            if (extractedText.length < 150) {
+                console.log("Textul extras prin metoda principala pare scurt. Cautam si in selectorul manual...");
                 const textLocator = targetPost.locator('div[dir="auto"] >> div[style*="text-align: start"]');
                 if (await textLocator.count() > 0) {
                     const texts = await textLocator.allInnerTexts();
-                    extractedText = texts.join('\n\n').trim();
+                    let manualText = texts.join('\n\n').trim();
+                    if (manualText.length > extractedText.length) {
+                        extractedText = manualText;
+                    }
                 }
             }
 
             if (extractedText.trim().length > 5) {
-                // Curățăm doar rămășițele butoanelor de text expandabile, nimic altceva
                 finalData = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
             }
             
