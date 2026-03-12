@@ -2,7 +2,11 @@ name: Facebook to WordPress Automator
 
 on:
   schedule:
-    - cron: '0 9 * * *' # Rulează zilnic la ora 09:00 UTC
+    # Orele sunt calculate pentru UTC (Ora României minus 2 ore)
+    # 05:00 UTC = 07:00 RO
+    # 11:00 UTC = 13:00 RO
+    # 20:00 UTC = 22:00 RO
+    - cron: '0 5,11,20 * * *'
   workflow_dispatch: # Permite rularea manuală
 
 permissions:
@@ -39,7 +43,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data.json post.jpg
+          git add data.json post_*.jpg
           
           if git diff --staged --quiet; then
             echo "Fara modificari de salvat"
