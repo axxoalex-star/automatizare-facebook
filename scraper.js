@@ -42,21 +42,27 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         // --- EXPANSIE TEXT ---
         console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
         try {
-            // Playwright .locator('text=...') gaseste elementul care contine textul respectiv. 
-            // Apelam click() din afara (metoda nativa a Playwright) pentru a mima un click real de mouse,
-            // altfel React-ul de pe Facebook nu inregistreaza eventul prin simplify JS .click()
-            const btn = targetPost.locator('text=Vezi mai mult').first();
-            const btnEng = targetPost.locator('text=See more').first();
+            // Cautam un element de tip buton sau text clickabil care sa contina "Vezi mai mult"
+            // Facebook foloseste des div[role="button"] cu elemente transparente deasupra
+            const btn = targetPost.locator('div[role="button"]').filter({ hasText: /Vezi mai mult|See more|\.\.\. Mai mult/i }).first();
             
-            if (await btn.isVisible({ timeout: 2000 })) {
-                await btn.click();
-                console.log("Succes: Am expandat textul cu 'Vezi mai mult'.");
-            } else if (await btnEng.isVisible({ timeout: 1000 })) {
-                await btnEng.click();
-                console.log("Succes: Am expandat textul cu 'See more'.");
+            if (await btn.isVisible({ timeout: 3000 })) {
+                console.log("Am găsit butonul de expandare, forțăm apăsarea (force: true)...");
+                // Facebook blochează uneori click-urile cu un strat transparent, așa că forțăm click-ul nativ Playwright:
+                await btn.click({ force: true });
+                
+                // Verificăm dacă a dispărut butonul ca dovadă a faptului că postarea s-a expandat cu succes
+                try {
+                    await btn.waitFor({ state: 'hidden', timeout: 3000 });
+                    console.log("Succes: Textul a fost expandat vizual complet.");
+                } catch (timeoutErr) {
+                    console.log("Avertisment: Butonul nu a dorit să dispară complet din cod, dar textul probabil s-a deschis.");
+                }
+            } else {
+                console.log("Nu am găsit un buton vizibil de 'Vezi mai mult'. Textul este probabil deja scurt și vizibil în întregime.");
             }
         } catch (e) {
-            console.log("Expansiunea textului nu a fost detectata, il lasam asa.");
+            console.log("Eroare la procesul de expansiune a textului:", e.message);
         }
         // Asteptam 5 secunde pentru ca React-ul de pe Facebook sa expandeze complet textul inainte de a-l citi
         await page.waitForTimeout(5000);
