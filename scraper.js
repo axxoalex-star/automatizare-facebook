@@ -42,16 +42,13 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         // --- EXPANSIE TEXT ---
         console.log("Căutăm și apăsăm pe 'Vezi mai mult'...");
         try {
-            // Cautam un element de tip buton sau text clickabil care sa contina "Vezi mai mult"
-            // Facebook foloseste des div[role="button"] cu elemente transparente deasupra
-            const btn = targetPost.locator('div[role="button"]').filter({ hasText: /Vezi mai mult|See more|\.\.\. Mai mult/i }).first();
+            // Facebook pune 'Vezi mai mult' ori in div, ori in span. Folosim locatorul strict pe text:
+            const btn = targetPost.locator('text=/Vezi mai mult|See more|\\.\\.\\. Mai mult/i').last();
             
             if (await btn.isVisible({ timeout: 3000 })) {
                 console.log("Am găsit butonul de expandare, forțăm apăsarea (force: true)...");
-                // Facebook blochează uneori click-urile cu un strat transparent, așa că forțăm click-ul nativ Playwright:
                 await btn.click({ force: true });
                 
-                // Verificăm dacă a dispărut butonul ca dovadă a faptului că postarea s-a expandat cu succes
                 try {
                     await btn.waitFor({ state: 'hidden', timeout: 3000 });
                     console.log("Succes: Textul a fost expandat vizual complet.");
@@ -127,29 +124,26 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         
         let finalData = "Postare fara text";
         try {
-            // Metoda bruta dar sigura recomandata: cautam containerul unde Facebook varsă tot textul postării după expandare
-            // Facebook aliniaza paragrafele manual la start
-            const textLocator = targetPost.locator('div[dir="auto"] >> div[style*="text-align: start"]');
-            
             let extractedText = "";
-            if (await textLocator.count() > 0) {
-                // Pot fi mai multe paragrafe separate
-                const texts = await textLocator.allInnerTexts();
+            const primaryMessage = targetPost.locator('[data-ad-comet-preview="message"]');
+            
+            // Metoda 1 (oficiala): Cautam blocul de mesaj nativ definit de Facebook
+            if (await primaryMessage.count() > 0) {
+                const texts = await primaryMessage.allInnerTexts();
                 extractedText = texts.join('\n\n').trim();
             }
 
-            // Daca selectorul de mai sus nu ofera un text concludent, ecranele noi de FB ar putea folosi data-ad-comet-preview
-            if (extractedText.length < 20) {
-                console.log("Textul principal nu a fost gasit. Incercam atributul oficial de mesaj...");
-                const fallbackMessage = targetPost.locator('[data-ad-comet-preview="message"]');
-                
-                if (await fallbackMessage.count() > 0) {
-                    const fallbackTexts = await fallbackMessage.allInnerTexts();
-                    extractedText = fallbackTexts.join('\n\n').trim();
+            // Metoda 2 (fallback): Daca nu l-a gasit (design modificat ad-hoc de fb), tragem paragrafe de text
+            if (extractedText.length < 5) {
+                console.log("Nu am gasit selectorul de mesaj oficial, incercam detectia paragrafelor manuale...");
+                const textLocator = targetPost.locator('div[dir="auto"] >> div[style*="text-align: start"]');
+                if (await textLocator.count() > 0) {
+                    const texts = await textLocator.allInnerTexts();
+                    extractedText = texts.join('\n\n').trim();
                 }
             }
 
-            if (extractedText.trim().length > 10) {
+            if (extractedText.trim().length > 5) {
                 // Curățăm doar rămășițele butoanelor de text expandabile, nimic altceva
                 finalData = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
             }
