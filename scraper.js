@@ -123,33 +123,27 @@ const FB_PAGE_URL = process.env.FB_PAGE_URL || 'https://www.facebook.com/luciand
         // --- EXTRAGERE TEXT COMPLET ---
         let finalData = "Postare fara text";
         try {
-            // Iterăm direct prin fiecare block de text "auto" scris de la stânga la dreapta
-            // și unificăm interiorul de text pentru a păstra fiecare paragraf corect 
-            // delimitat de o linie nouă, ignorând tag-urile HTML de reacții
-            const textLocator = targetPost.locator('div[dir="auto"]');
-            const elementCount = await textLocator.count();
+            // Metoda bruta dar curata: cautam strict în interiorul atributului de mesaj, ignorând zona de comentarii
+            const messageContainer = targetPost.locator('[data-ad-comet-preview="message"]').first();
             
-            let allParagraphs = [];
-            for (let i = 0; i < elementCount; i++) {
-                let pText = await textLocator.nth(i).innerText();
-                let txt = pText.trim();
-                
-                // Excludem bucățile de span cu semnături scurte (Ore, Like-uri, Autori)
-                if (
-                    txt.length > 5 &&
-                    !txt.match(/^[0-9]+\s*(m|h|d|w)$/) && 
-                    !txt.includes('@') && 
-                    !txt.toLowerCase().includes('lucian daniel') // evitam re-inregistrarea numelui tău
-                ) {
-                    allParagraphs.push(txt);
-                }
+            let extractedText = "";
+            if (await messageContainer.count() > 0) {
+                extractedText = await messageContainer.innerText();
             }
-            
-            // Unificăm tot array-ul format din elementele filtratte de React ca fiind texte de postare
-            let extractedText = allParagraphs.join('\n\n');
-            
+
             if (extractedText.trim().length > 5) {
-                finalData = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
+                // Curăță textul predefinit de Vezi mai mult
+                let cleanText = extractedText.replace(/Vezi mai mult|See more|\.\.\. Mai mult/gi, '').trim();
+                
+                // Filtrarea duplicatelor (pentru titlu) și eliminarele rândurilor goale
+                let lines = cleanText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                
+                // Dacă primele două linii sunt identice, elimină una din ele
+                if (lines.length > 1 && lines[0] === lines[1]) {
+                    lines.shift();
+                }
+                
+                finalData = lines.join('\n\n');
             }
             
         } catch (e) {
